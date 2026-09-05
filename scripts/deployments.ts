@@ -7,6 +7,9 @@ export type DeploymentInfo = {
   genesisIssuerName: string;
   deployer: string;
   deployedAt: string;
+  /** Block the contract landed in. The roll is rebuilt from logs, and this is
+   *  where that scan starts; without it every read walks the whole chain. */
+  block?: number;
 };
 
 const DIR = path.join(__dirname, "..", "deployments");

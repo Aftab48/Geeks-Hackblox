@@ -60,6 +60,26 @@ export async function getOwnerOf(
   }
 }
 
+/**
+ * Every entry in the register, oldest first. The appointments page needs the
+ * whole thing because a registrar supervises by issuer, and there is no
+ * contract call for "certificates minted by the people I appointed".
+ */
+export async function getAllCertificates(): Promise<Certificate[]> {
+  try {
+    const total = (await publicClient.readContract({
+      ...contract,
+      functionName: "totalIssued",
+    })) as bigint;
+
+    const ids = Array.from({ length: Number(total) }, (_, i) => BigInt(i + 1));
+    const certificates = await Promise.all(ids.map(getCertificateById));
+    return certificates.filter((cert): cert is Certificate => cert !== null);
+  } catch {
+    return [];
+  }
+}
+
 export type LookupKind = "address" | "tokenId" | "invalid";
 
 export function classifyQuery(raw: string): LookupKind {

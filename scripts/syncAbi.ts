@@ -39,6 +39,9 @@ export const GENESIS_ISSUER_NAME = ${JSON.stringify(
   deployment.genesisIssuerName
 )};
 
+// Where the roll starts. Role logs are read from here rather than from block 0.
+export const DEPLOY_BLOCK = ${Number(deployment.block ?? 0)};
+
 export const EXPLORER_URL = "https://sepolia.basescan.org";
 
 export const SOULBOUND_ABI = ${JSON.stringify(artifact.abi, null, 2)} as const;

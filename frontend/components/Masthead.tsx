@@ -18,7 +18,10 @@ export function Masthead() {
             Look up
           </Link>
           <Link href="/issue" className="text-soft hover:text-seal">
-            Registrar
+            Issue
+          </Link>
+          <Link href="/appointments" className="text-soft hover:text-seal">
+            Appointments
           </Link>
         </nav>
       </div>

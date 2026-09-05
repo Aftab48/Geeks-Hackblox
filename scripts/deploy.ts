@@ -30,12 +30,17 @@ async function main() {
   await contract.waitForDeployment();
   const address = await contract.getAddress();
 
+  // The appointments page rebuilds the roll from role logs, so it needs to
+  // know where to start reading.
+  const receipt = await contract.deploymentTransaction()?.wait();
+
   const file = saveDeployment({
     network: network.name,
     address,
     genesisIssuerName: GENESIS_ISSUER_NAME,
     deployer: deployer.address,
     deployedAt: new Date().toISOString(),
+    block: receipt?.blockNumber,
   });
 
   console.log("\nSoulboundCertificate deployed to:", address);

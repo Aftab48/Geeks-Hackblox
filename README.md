@@ -45,6 +45,22 @@ certificates those issuers minted; an admin can do either to anyone. A
 faculty can therefore clean up after its own department without being handed
 the keys to the whole register.
 
+`/appointments` is where that happens without a terminal. The page draws the
+roll as a roll: each issuer sits indented under the registrar who appointed
+them, joined by a rule, because `appointedBy` is the whole point and a role
+column on a flat table would have taught nobody the shape of the thing. The
+appointment form offers whichever office your wallet can actually fill, so an
+admin sees registrar, a registrar sees issuer, and the deployer holding both
+gets to choose. Below it, a registrar gets the entries its issuers recorded,
+with the same revoke button the issuer has.
+
+Two details that cost more than they look. AccessControl keeps no list of role
+holders, so the roll is rebuilt from `RoleGranted` logs and then checked
+against current state, since a role granted in one block may have been revoked
+in the next. Reading those logs needs a starting block, which is why
+`deployments/baseSepolia.json` now records one and `sync:abi` passes it to the
+frontend as `DEPLOY_BLOCK`.
+
 ### The register number is a condition, not a guess
 
 The artwork is drawn and pinned before anything is signed, so it has to be
@@ -158,14 +174,26 @@ The public Base RPC load-balances across nodes, so a read immediately after a
 write can hit one that's a block behind. Granting an issuer role and then
 checking it returned `false` on a transaction that had already succeeded. The
 grant script polls now, and a dedicated RPC endpoint makes the problem go away.
+
+Coinbase's Base Sepolia endpoint answers `eth_getLogs` only when both bounds
+are real block numbers. Pass `fromBlock` with `toBlock: "latest"` and it
+returns `invalid block range params`, which reads like a range that's too wide
+and isn't: a single-block query fails the same way. The roll resolves the head
+to a number first.
+
 ## What isn't here
 
-A screen for any of the appointment work. The hierarchy exists on-chain and the
-scripts drive it, but the dashboard at `/issue` only mints and revokes, so
-adding a registrar means running `grant:registrar` from a terminal. Nothing in
-the contract stands in the way of a proper admin page; nobody has built one.
+Renaming. `issuerName` is written when someone is appointed and never again, so
+correcting a typo in "Dept of Computer Sceince" means removing that issuer and
+appointing them a second time. The certificates already carrying the misspelling
+keep it, which is arguably correct for a register and still annoying.
 
-The registrar's view of revocation, for the same reason. A registrar can revoke
-what its issuers minted, and the contract will let it, but `IssuedList` filters
-the register down to certificates the connected wallet issued itself. So the
-button is there for your own entries and missing for the ones you supervise.
+Anything cascading. Strip a registrar and the issuers underneath keep issuing,
+because the contract revokes one role and touches nothing else. The roll shows
+them afterwards under a heading saying nobody sits above them, so at least
+they're visible, but an admin has to remove each one.
+
+Scale, in one specific place. A registrar's supervised entries are worked out
+by pulling every certificate in the register and filtering client-side, which
+is fine at three and silly at three thousand. The fix is an index of issuer to
+token ids, and the contract would have to keep it.

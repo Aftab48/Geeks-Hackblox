@@ -8,6 +8,9 @@ export const CHAIN_ID = 84532; // Base Sepolia
 
 export const GENESIS_ISSUER_NAME = "University Of Calcutta";
 
+// Where the roll starts. Role logs are read from here rather than from block 0.
+export const DEPLOY_BLOCK = 46428845;
+
 export const EXPLORER_URL = "https://sepolia.basescan.org";
 
 export const SOULBOUND_ABI = [
