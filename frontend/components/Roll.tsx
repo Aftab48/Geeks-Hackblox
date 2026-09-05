@@ -43,7 +43,14 @@ export function Roll({
   return (
     <div className="font-mono text-sm">
       {registrars.map((registrar) => {
-        const under = issuers.filter((i) => same(i.appointedBy, registrar.address));
+        const appointed = issuers.filter(
+          (i) =>
+            same(i.appointedBy, registrar.address) &&
+            !same(i.address, registrar.address)
+        );
+        // An issuer that is itself a registrar has its own line further down,
+        // so it is not also listed here as somebody's appointee.
+        const under = appointed.filter((i) => !i.isRegistrar);
         return (
           <div key={registrar.address} className="border-t border-rule py-5 first:border-t-0">
             <Line
@@ -78,7 +85,7 @@ export function Roll({
               </ul>
             )}
 
-            {under.length === 0 && (
+            {appointed.length === 0 && (
               <p className="mt-3 ml-3 border-l border-rule/60 py-1 pl-6 text-xs text-soft">
                 No issuers appointed yet.
               </p>
