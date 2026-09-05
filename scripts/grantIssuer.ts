@@ -3,9 +3,10 @@ import { loadDeployment } from "./deployments";
 
 /**
  * Grants ISSUER_ROLE to an address so it can mint from the dashboard.
- * Must be run by the contract admin (the deployer).
+ * Must be run by a registrar. The deployer is one; anyone else needs
+ * npm run grant:registrar first.
  *
- *   $env:ISSUER_ADDRESS="0x..."; $env:ISSUER_NAME="University Of Calcutta"; npm run grant:issuer
+ *   $env:ISSUER_ADDRESS="0x..."; $env:ISSUER_NAME="Dept of Computer Science"; npm run grant:issuer
  */
 async function main() {
   const deployment = loadDeployment(network.name);
@@ -23,9 +24,14 @@ async function main() {
     admin
   );
 
-  const adminRole = await contract.DEFAULT_ADMIN_ROLE();
-  if (!(await contract.hasRole(adminRole, admin.address))) {
-    throw new Error(`${admin.address} is not an admin on this contract.`);
+  // ISSUER_ROLE is administered by REGISTRAR_ROLE, so appointing an issuer
+  // is a registrar's job. An admin that isn't also a registrar gets rejected
+  // by the contract, which is the hierarchy working as intended.
+  if (!(await contract.isRegistrar(admin.address))) {
+    throw new Error(
+      `${admin.address} is not a registrar on this contract. ` +
+        "Run npm run grant:registrar from the admin wallet first."
+    );
   }
 
   if (await contract.isIssuer(account)) {
@@ -33,8 +39,8 @@ async function main() {
     return;
   }
 
-  console.log("Contract:", deployment.address);
-  console.log("Admin   :", admin.address);
+  console.log("Contract :", deployment.address);
+  console.log("Registrar:", admin.address);
   console.log("Granting ISSUER_ROLE to", account, `as "${name}"`);
 
   const tx = await contract.addIssuer(account, name);
@@ -53,8 +59,7 @@ async function main() {
   }
 
   console.log(
-    "Transaction confirmed, but the role has not shown up in reads yet.
-" +
+    "Transaction confirmed, but the role has not shown up in reads yet. " +
       "This is usually RPC lag. Check with: npm run check:role"
   );
 }

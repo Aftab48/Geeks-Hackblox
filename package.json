@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "dev": "npm --prefix frontend run dev",
     "compile": "hardhat compile",
     "test": "hardhat test",
     "wallet:new": "ts-node scripts/newWallet.ts",
@@ -14,6 +15,7 @@
     "read": "hardhat run scripts/read.ts --network baseSepolia",
     "sync:abi": "ts-node scripts/syncAbi.ts",
     "grant:issuer": "hardhat run scripts/grantIssuer.ts --network baseSepolia",
+    "grant:registrar": "hardhat run scripts/grantRegistrar.ts --network baseSepolia",
     "check:role": "hardhat run scripts/checkRole.ts --network baseSepolia"
   },
   "keywords": [],

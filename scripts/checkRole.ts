@@ -15,15 +15,23 @@ async function main() {
 
   const adminRole = await contract.DEFAULT_ADMIN_ROLE();
   const issuerRole = await contract.ISSUER_ROLE();
+  const registrarRole = await contract.REGISTRAR_ROLE();
+
+  const appointer = await contract.appointedBy(account);
 
   console.log("Block   :", await ethers.provider.getBlockNumber());
   console.log("Contract:", deployment.address);
   console.log("Account :", account);
   console.log("");
-  console.log("  isIssuer      :", await contract.isIssuer(account));
-  console.log("  ISSUER_ROLE   :", await contract.hasRole(issuerRole, account));
-  console.log("  DEFAULT_ADMIN :", await contract.hasRole(adminRole, account));
-  console.log("  issuerName    :", JSON.stringify(await contract.issuerName(account)));
+  console.log("  isIssuer       :", await contract.isIssuer(account));
+  console.log("  ISSUER_ROLE    :", await contract.hasRole(issuerRole, account));
+  console.log("  REGISTRAR_ROLE :", await contract.hasRole(registrarRole, account));
+  console.log("  DEFAULT_ADMIN  :", await contract.hasRole(adminRole, account));
+  console.log("  name           :", JSON.stringify(await contract.issuerName(account)));
+  console.log(
+    "  appointed by   :",
+    appointer === ethers.ZeroAddress ? "(genesis or raw grantRole)" : appointer
+  );
 }
 
 main().catch((error) => {

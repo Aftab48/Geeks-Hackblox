@@ -2,7 +2,7 @@
 // Regenerate after every deploy so the address and ABI stay in sync.
 
 export const CONTRACT_ADDRESS =
-  "0x0b416829227749bF58AA90d66dC6a429273b1DC9" as `0x${string}`;
+  "0xC7594b300e81a7C03b2E6C3f76B1E5718c73f746" as `0x${string}`;
 
 export const CHAIN_ID = 84532; // Base Sepolia
 
@@ -153,7 +153,28 @@ export const SOULBOUND_ABI = [
   },
   {
     "inputs": [],
+    "name": "NotAnIssuer",
+    "type": "error"
+  },
+  {
+    "inputs": [],
     "name": "NotCertificateIssuer",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "NotTheAppointingRegistrar",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "nextTokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "RegisterEntryTaken",
     "type": "error"
   },
   {
@@ -299,6 +320,12 @@ export const SOULBOUND_ABI = [
         "internalType": "string",
         "name": "name",
         "type": "string"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "appointedBy",
+        "type": "address"
       }
     ],
     "name": "IssuerAdded",
@@ -311,6 +338,12 @@ export const SOULBOUND_ABI = [
         "indexed": true,
         "internalType": "address",
         "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "removedBy",
         "type": "address"
       }
     ],
@@ -328,6 +361,38 @@ export const SOULBOUND_ABI = [
       }
     ],
     "name": "MetadataUpdate",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "name": "RegistrarAdded",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "RegistrarRemoved",
     "type": "event"
   },
   {
@@ -457,6 +522,19 @@ export const SOULBOUND_ABI = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "REGISTRAR_ROLE",
+    "outputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -472,6 +550,43 @@ export const SOULBOUND_ABI = [
     "name": "addIssuer",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      }
+    ],
+    "name": "addRegistrar",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "issuer",
+        "type": "address"
+      }
+    ],
+    "name": "appointedBy",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "registrar",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -778,6 +893,25 @@ export const SOULBOUND_ABI = [
   {
     "inputs": [
       {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "isRegistrar",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "uint256",
         "name": "tokenId",
         "type": "uint256"
@@ -821,7 +955,7 @@ export const SOULBOUND_ABI = [
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "tokenId",
+        "name": "",
         "type": "uint256"
       }
     ],
@@ -832,7 +966,46 @@ export const SOULBOUND_ABI = [
     "inputs": [
       {
         "internalType": "address",
-        "name": "issuer",
+        "name": "to",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "recipientName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "courseName",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "uri",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "expectedTokenId",
+        "type": "uint256"
+      }
+    ],
+    "name": "issueCertificateAt",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
         "type": "address"
       }
     ],
@@ -855,6 +1028,19 @@ export const SOULBOUND_ABI = [
         "internalType": "string",
         "name": "",
         "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "nextTokenId",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -888,6 +1074,19 @@ export const SOULBOUND_ABI = [
       }
     ],
     "name": "removeIssuer",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "removeRegistrar",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"

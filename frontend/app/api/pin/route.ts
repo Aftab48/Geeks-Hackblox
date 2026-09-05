@@ -12,6 +12,9 @@ type MintMetadataRequest = {
   courseName?: string;
   issuerName?: string;
   issuerAddress?: string;
+  to?: string;
+  /** Set on a retry, when a revert has already told us the real next entry. */
+  expectedTokenId?: number;
 };
 
 function toDataUri(json: unknown): string {
@@ -66,25 +69,37 @@ export async function POST(request: Request) {
     day: "numeric",
   });
 
-  // The register number this mint will land on. Reading totalIssued and adding
-  // one is only wrong if a second issuer mints in the same moment; the
-  // downloadable copy at /certificate/[tokenId] always reads the real number
-  // back off the chain.
-  let entryNumber = "000";
-  try {
-    const total = (await publicClient.readContract({
-      address: CONTRACT_ADDRESS,
-      abi: SOULBOUND_ABI,
-      functionName: "totalIssued",
-    })) as bigint;
-    entryNumber = (Number(total) + 1).toString().padStart(3, "0");
-  } catch {
-    // Leave the placeholder rather than failing the mint over a cosmetic field.
+  // The register number this artwork is stamped with. It's a claim, not a
+  // fact, until the mint lands: two issuers reading the same nextTokenId in
+  // the same block would both stamp it. The client passes it to
+  // issueCertificateAt, which reverts unless the chain still agrees, and
+  // comes back here with the real number to pin a corrected copy.
+  let expectedTokenId: number | null = null;
+  const retryWith = Number(body.expectedTokenId);
+  if (Number.isInteger(retryWith) && retryWith > 0) {
+    expectedTokenId = retryWith;
+  } else {
+    try {
+      const next = (await publicClient.readContract({
+        address: CONTRACT_ADDRESS,
+        abi: SOULBOUND_ABI,
+        functionName: "nextTokenId",
+      })) as bigint;
+      expectedTokenId = Number(next);
+    } catch {
+      // Fall through unnumbered rather than failing the mint outright.
+    }
   }
 
+  const entryNumber =
+    expectedTokenId === null ? "000" : expectedTokenId.toString().padStart(3, "0");
+
   const siteUrl = await getSiteUrl();
-  const verifyUrl = `${siteUrl}/verify/${Number(entryNumber)}`;
-  const qr = await qrDataUrl(verifyUrl);
+  // With no number to point at, send the QR to the holder's wallet instead,
+  // which resolves to the same certificate and can't go stale.
+  const verifyTarget = expectedTokenId ?? body.to?.trim();
+  const verifyUrl = `${siteUrl}/verify/${verifyTarget ?? ""}`;
+  const qr = verifyTarget ? await qrDataUrl(verifyUrl) : null;
 
   const svg = certificateSvg({
     recipientName,
@@ -122,6 +137,8 @@ export async function POST(request: Request) {
       uri: toDataUri({ ...metadata, image: svgDataUri }),
       pinned: false,
       reason: "PINATA_JWT not set - metadata embedded inline instead",
+      entryNumber,
+      expectedTokenId,
     });
   }
 
@@ -153,6 +170,8 @@ export async function POST(request: Request) {
       uri: `ipfs://${metadataHash}`,
       imageUri: `ipfs://${imageHash}`,
       pinned: true,
+      entryNumber,
+      expectedTokenId,
     });
   } catch (error) {
     // Pinning failed mid-hackathon. Fall back rather than block the mint.
@@ -161,6 +180,8 @@ export async function POST(request: Request) {
       uri: toDataUri({ ...metadata, image: svgDataUri }),
       pinned: false,
       reason: error instanceof Error ? error.message : "Pinning failed",
+      entryNumber,
+      expectedTokenId,
     });
   }
 }

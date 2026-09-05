@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { isAddress } from "viem";
+import { useMemo, useState } from "react";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  isAddress,
+  parseEventLogs,
+} from "viem";
 import {
   useAccount,
   useReadContract,
@@ -18,7 +23,32 @@ const inputClass =
 const labelClass =
   "font-mono text-[0.62rem] uppercase tracking-[0.16em] text-soft";
 
-type PinResult = { uri: string; pinned: boolean; reason?: string };
+type PinResult = {
+  uri: string;
+  pinned: boolean;
+  reason?: string;
+  entryNumber: string;
+  expectedTokenId: number | null;
+};
+
+/**
+ * Pulls the real next register number out of a RegisterEntryTaken revert.
+ * Returns null for every other failure, including a rejected signature.
+ */
+function takenEntry(error: unknown): number | null {
+  if (!(error instanceof BaseError)) return null;
+  const reverted = error.walk((e) => e instanceof ContractFunctionRevertedError);
+  if (!(reverted instanceof ContractFunctionRevertedError)) return null;
+  if (reverted.data?.errorName !== "RegisterEntryTaken") return null;
+  const next = reverted.data.args?.[0];
+  return typeof next === "bigint" ? Number(next) : null;
+}
+
+function readable(error: unknown): string {
+  if (error instanceof BaseError) return error.shortMessage || error.message;
+  if (error instanceof Error) return error.message;
+  return "The record couldn't be written";
+}
 
 export function MintForm() {
   const { address } = useAccount();
@@ -26,8 +56,9 @@ export function MintForm() {
   const [recipientName, setRecipientName] = useState("");
   const [courseName, setCourseName] = useState("");
 
-  const [preparing, setPreparing] = useState(false);
-  const [prepareError, setPrepareError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [retryNote, setRetryNote] = useState<string | null>(null);
   const [pinInfo, setPinInfo] = useState<PinResult | null>(null);
 
   const { data: issuerName } = useReadContract({
@@ -38,72 +69,137 @@ export function MintForm() {
     query: { enabled: Boolean(address) },
   });
 
-  const { writeContract, data: hash, isPending, error, reset } =
-    useWriteContract();
-  const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-    query: { enabled: Boolean(hash) },
-  });
+  const { writeContractAsync, data: hash, isPending, reset } = useWriteContract();
+  const {
+    data: receipt,
+    isLoading: confirming,
+    isSuccess,
+  } = useWaitForTransactionReceipt({ hash, query: { enabled: Boolean(hash) } });
+
+  // The register number as the chain recorded it, not as we guessed it.
+  const recordedEntry = useMemo(() => {
+    if (!receipt) return null;
+    const [issued] = parseEventLogs({
+      abi: SOULBOUND_ABI,
+      eventName: "CertificateIssued",
+      logs: receipt.logs,
+    });
+    return issued ? issued.args.tokenId : null;
+  }, [receipt]);
 
   const addressValid = isAddress(to.trim());
   const ready =
     addressValid && recipientName.trim() !== "" && courseName.trim() !== "";
-  const busy = preparing || isPending || confirming;
+  const busy = working || isPending || confirming;
+
+  /** Builds the artwork and metadata, stamped with `entry` when we know it. */
+  async function buildRecord(entry?: number): Promise<PinResult> {
+    const response = await fetch("/api/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        recipientName: recipientName.trim(),
+        courseName: courseName.trim(),
+        issuerName: (issuerName as string | undefined) ?? "",
+        issuerAddress: address,
+        to: to.trim(),
+        expectedTokenId: entry,
+      }),
+    });
+
+    const result = (await response.json()) as PinResult & { error?: string };
+    if (!response.ok) throw new Error(result.error ?? "The record couldn't be built");
+    return result;
+  }
+
+  async function send(record: PinResult) {
+    const common = [
+      to.trim() as `0x${string}`,
+      recipientName.trim(),
+      courseName.trim(),
+      record.uri,
+    ] as const;
+
+    // With a number stamped on the artwork, mint through the checked path so
+    // the token can only land on that entry. Without one (the totalIssued
+    // read failed), fall back to the plain mint rather than blocking.
+    if (record.expectedTokenId === null) {
+      return writeContractAsync({
+        address: CONTRACT_ADDRESS,
+        abi: SOULBOUND_ABI,
+        functionName: "issueCertificate",
+        args: common,
+      });
+    }
+
+    return writeContractAsync({
+      address: CONTRACT_ADDRESS,
+      abi: SOULBOUND_ABI,
+      functionName: "issueCertificateAt",
+      args: [...common, BigInt(record.expectedTokenId)],
+    });
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!ready || busy) return;
 
-    setPreparing(true);
-    setPrepareError(null);
+    setWorking(true);
+    setFailure(null);
+    setRetryNote(null);
     setPinInfo(null);
 
     try {
-      // Pin the artwork and metadata first, so the token URI is settled before
-      // anything gets signed.
-      const response = await fetch("/api/pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipientName: recipientName.trim(),
-          courseName: courseName.trim(),
-          issuerName: (issuerName as string | undefined) ?? "",
-          issuerAddress: address,
-        }),
-      });
+      // Pin first, so the token URI is settled before anything gets signed.
+      let record = await buildRecord();
+      setPinInfo(record);
 
-      const result = (await response.json()) as PinResult & { error?: string };
-      if (!response.ok) {
-        throw new Error(result.error ?? "The record couldn't be built");
+      // If another issuer claims the number between the pin and the signature,
+      // the contract refuses the mint and hands back the real one. Rebuild
+      // against that and ask for one more signature.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await send(record);
+          return;
+        } catch (caught) {
+          const actual = takenEntry(caught);
+          if (actual === null) throw caught;
+
+          setRetryNote(
+            `Entry ${record.entryNumber} went to another issuer while you were ` +
+              `signing. Rebuilt as ${actual.toString().padStart(3, "0")}, ` +
+              "confirm once more."
+          );
+          record = await buildRecord(actual);
+          setPinInfo(record);
+        }
       }
 
-      setPinInfo(result);
-      writeContract({
-        address: CONTRACT_ADDRESS,
-        abi: SOULBOUND_ABI,
-        functionName: "issueCertificate",
-        args: [
-          to.trim() as `0x${string}`,
-          recipientName.trim(),
-          courseName.trim(),
-          result.uri,
-        ],
-      });
-    } catch (caught) {
-      setPrepareError(
-        caught instanceof Error ? caught.message : "The record couldn't be built"
+      throw new Error(
+        "The register moved on three times while you were signing. Try again in a moment."
       );
+    } catch (caught) {
+      setFailure(readable(caught));
     } finally {
-      setPreparing(false);
+      setWorking(false);
     }
   }
 
   if (isSuccess) {
+    const entry = recordedEntry?.toString();
     return (
       <div className="border-l-2 border-ink bg-card px-6 py-6">
         <h2 className="display text-2xl">Recorded</h2>
         <p className="mt-2 text-sm text-soft">
-          Written to the register for{" "}
+          {entry ? (
+            <>
+              Entry{" "}
+              <span className="font-mono text-ink">{entry.padStart(3, "0")}</span>,
+              written to the register for{" "}
+            </>
+          ) : (
+            "Written to the register for "
+          )}
           <span className="font-mono text-ink">{to.trim()}</span>.{" "}
           {pinInfo?.pinned
             ? "Artwork and metadata are pinned to IPFS."
@@ -112,11 +208,19 @@ export function MintForm() {
 
         <div className="mt-5 flex flex-wrap gap-5 text-sm">
           <Link
-            href={`/verify/${to.trim()}`}
+            href={`/verify/${entry ?? to.trim()}`}
             className="underline decoration-rule underline-offset-4 hover:text-seal"
           >
             Open the register entry
           </Link>
+          {entry && (
+            <a
+              href={`/certificate/${entry}?format=pdf&download=1`}
+              className="underline decoration-rule underline-offset-4 hover:text-seal"
+            >
+              Download the certificate
+            </a>
+          )}
           <a
             href={`${EXPLORER_URL}/tx/${hash}`}
             target="_blank"
@@ -134,6 +238,7 @@ export function MintForm() {
             setRecipientName("");
             setCourseName("");
             setPinInfo(null);
+            setRetryNote(null);
           }}
           className="mt-6 border border-rule px-5 py-2.5 font-mono text-xs uppercase
                      tracking-[0.14em] text-soft transition hover:border-ink hover:text-ink"
@@ -148,8 +253,9 @@ export function MintForm() {
     <form onSubmit={handleSubmit} className="border border-rule bg-card px-6 py-7 sm:px-8">
       <h2 className="display text-2xl">Record a certificate</h2>
       <p className="mt-2 max-w-lg text-sm leading-relaxed text-soft">
-        The register number, artwork and QR code are generated at mint. The
-        token goes straight into the graduate&apos;s wallet and stays there.
+        The register number, artwork and QR code are generated at mint, and the
+        contract refuses the mint if that number has been taken since. The token
+        goes straight into the graduate&apos;s wallet and stays there.
       </p>
 
       <div className="mt-6 grid gap-5">
@@ -193,11 +299,15 @@ export function MintForm() {
         </div>
       </div>
 
-      {(prepareError || error) && (
+      {retryNote && (
+        <p className="mt-5 border-l-2 border-ink bg-ink/5 px-4 py-3 text-sm text-soft">
+          {retryNote}
+        </p>
+      )}
+
+      {failure && (
         <p className="mt-5 border-l-2 border-seal bg-seal/5 px-4 py-3 text-sm text-seal">
-          {prepareError ??
-            (error as { shortMessage?: string })?.shortMessage ??
-            error?.message}
+          {failure}
         </p>
       )}
 
@@ -208,7 +318,7 @@ export function MintForm() {
                    tracking-[0.16em] text-paper transition hover:border-seal hover:bg-seal
                    disabled:cursor-not-allowed disabled:opacity-35"
       >
-        {preparing
+        {working && !isPending
           ? "Building the record"
           : isPending
             ? "Confirm in your wallet"
