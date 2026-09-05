@@ -12,6 +12,14 @@ on Base Sepolia, deployed 5 September 2026, source verified. The first
 deployment at `0x0b41…1dC9` is still up and still readable; it predates the
 issuer hierarchy, and nothing migrates between the two.
 
+## System architecture
+
+![Four blocks: the admin-registrar-issuer role hierarchy feeding
+issueCertificateAt; the SoulboundCertificate contract on Base Sepolia minting a
+non-transferable token into the graduate's wallet; metadata and artwork pinned
+to IPFS and referenced by tokenURI; and a read-only verification path from
+employer to Next.js frontend to certificate page.](certificate-registrar-flow.jpeg)
+
 ## How a check actually works
 
 The verification page never touches a wallet. It opens a viem public client
