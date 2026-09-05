@@ -7,8 +7,10 @@ nobody at the examinations office to email.
 
 Built for the HackBlox 2026 Web3 track, problem statement 2.
 
-**Contract:** [`0x0b416829227749bF58AA90d66dC6a429273b1DC9`](https://sepolia.basescan.org/address/0x0b416829227749bF58AA90d66dC6a429273b1DC9)
-on Base Sepolia, deployed 4 September 2026, source verified.
+**Contract:** [`0xC7594b300e81a7C03b2E6C3f76B1E5718c73f746`](https://sepolia.basescan.org/address/0xC7594b300e81a7C03b2E6C3f76B1E5718c73f746)
+on Base Sepolia, deployed 5 September 2026, source verified. The first
+deployment at `0x0b41…1dC9` is still up and still readable; it predates the
+issuer hierarchy, and nothing migrates between the two.
 
 ## How a check actually works
 
@@ -26,8 +28,37 @@ it as an attachment. Each one carries a QR code back to its verification page.
 The copy pinned at mint time can go stale; this one can't.
 
 Issuing is the only part that needs a wallet. A whitelisted address signs
-`issueCertificate` and the token lands in the graduate's wallet with no way
+`issueCertificateAt` and the token lands in the graduate's wallet with no way
 back out.
+
+### Who can sign what
+
+Three tiers, wired through `_setRoleAdmin` so AccessControl enforces them on
+the raw `grantRole` path as well as through the named functions. The admin
+appoints registrars, a registrar appoints the issuers under it, and an issuer
+mints. Nobody appoints sideways: an issuer can't create another issuer, and a
+registrar can't create another registrar.
+
+`appointedBy` records which registrar hired which issuer, and two rules hang
+off it. A registrar can strip only the issuers it appointed, and it can revoke
+certificates those issuers minted; an admin can do either to anyone. A
+faculty can therefore clean up after its own department without being handed
+the keys to the whole register.
+
+### The register number is a condition, not a guess
+
+The artwork is drawn and pinned before anything is signed, so it has to be
+stamped with a number the mint hasn't produced yet. Reading `nextTokenId()`
+and hoping is fine until two issuers read the same value in the same block,
+at which point one of them ends up holding a certificate whose printed number
+belongs to somebody else.
+
+`issueCertificateAt` takes that number as an argument and reverts with
+`RegisterEntryTaken(nextTokenId)` unless the chain still agrees. The mint
+either matches the paper or doesn't happen. The revert carries the real number,
+so the dashboard rebuilds the artwork against it and asks for one more
+signature rather than starting over. Scripts that don't care still use plain
+`issueCertificate`.
 
 ## Running it
 
@@ -42,10 +73,13 @@ npm test
 cd frontend && npm install && npm run dev
 ```
 
-Nine contract tests cover the parts worth breaking. A whitelisted issuer can
-mint and a stranger can't, an admin can add an issuer who then mints, transfers
-and approvals both revert after minting, revoking flips validity without moving
-the token, and nobody can revoke a certificate they didn't issue.
+Sixteen contract tests cover the parts worth breaking. A whitelisted issuer can
+mint and a stranger can't, transfers and approvals both revert after minting,
+revoking flips validity without moving the token, and nobody can revoke a
+certificate they didn't issue. The rest sit on the two things that took the
+most thought: the appointment chain, including the sideways moves it has to
+refuse, and a second issuer taking the register number out from under a mint
+that's already been prepared.
 
 ### Environment
 
@@ -78,8 +112,9 @@ on IPFS" requirement.
 | `npm run verify` | Publishes source to Basescan |
 | `npm run mint` | Mints a certificate from the deployer |
 | `npm run read` | Prints every certificate held by `READ_ADDRESS` |
-| `npm run grant:issuer` | Whitelists `ISSUER_ADDRESS` as an issuer |
-| `npm run check:role` | Reads roles for `CHECK_ADDRESS` |
+| `npm run grant:registrar` | Admin appoints `REGISTRAR_ADDRESS` as a registrar |
+| `npm run grant:issuer` | Registrar appoints `ISSUER_ADDRESS` as an issuer |
+| `npm run check:role` | All three tiers for `CHECK_ADDRESS`, and who appointed it |
 | `npm run sync:abi` | Regenerates `frontend/lib/contract.ts` |
 | `npm run wallet:new` | Generates a fresh throwaway deployer keypair |
 | `npm run balance` | Deployer balance and which RPC is in use |
@@ -123,12 +158,14 @@ The public Base RPC load-balances across nodes, so a read immediately after a
 write can hit one that's a block behind. Granting an issuer role and then
 checking it returned `false` on a transaction that had already succeeded. The
 grant script polls now, and a dedicated RPC endpoint makes the problem go away.
-
-One more, for anyone starting from the problem statement: it suggests Polygon
-Mumbai, which shut down in April 2024. Base Sepolia or Polygon Amoy instead.
-
 ## What isn't here
 
-Issuer tiers. The contract has an admin who appoints issuers, but an issuer
-can't appoint anyone below them. `AccessControl` supports it through
-`_setRoleAdmin`, so it's a small change, and it would need a redeploy.
+A screen for any of the appointment work. The hierarchy exists on-chain and the
+scripts drive it, but the dashboard at `/issue` only mints and revokes, so
+adding a registrar means running `grant:registrar` from a terminal. Nothing in
+the contract stands in the way of a proper admin page; nobody has built one.
+
+The registrar's view of revocation, for the same reason. A registrar can revoke
+what its issuers minted, and the contract will let it, but `IssuedList` filters
+the register down to certificates the connected wallet issued itself. So the
+button is there for your own entries and missing for the ones you supervise.

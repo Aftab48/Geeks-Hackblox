@@ -37,8 +37,14 @@ export async function resolveMetadata(
 
   try {
     const response = await fetch(url, {
-      next: { revalidate: 300 },
-      signal: AbortSignal.timeout(6000),
+      // A CID addresses its own bytes, so this can never go stale. Cache it
+      // for good: the public gateway takes 4-7 seconds on a cold read, and
+      // paying that once per certificate rather than once per page load is
+      // the difference between a demo that hangs and one that doesn't.
+      cache: "force-cache",
+      // The old 6s ceiling sat right in the middle of that range, so the
+      // artwork appeared or vanished depending on how the gateway felt.
+      signal: AbortSignal.timeout(15000),
     });
     if (!response.ok) return null;
     return (await response.json()) as CertificateMetadata;

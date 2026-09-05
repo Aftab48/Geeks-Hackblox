@@ -1,6 +1,7 @@
 import type { Certificate } from "@/lib/certificates";
 import { CONTRACT_ADDRESS, EXPLORER_URL } from "@/lib/contract";
 import { toHttpUrl, type CertificateMetadata } from "@/lib/metadata";
+import { CertificateArtwork } from "./CertificateArtwork";
 import { Seal } from "./Seal";
 
 function shorten(address: string) {
@@ -128,14 +129,11 @@ export function CertificateCard({
         </dl>
 
         {image && (
-          <div className="mt-7 border border-rule bg-paper p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={image}
-              alt={`Certificate issued to ${certificate.recipientName}`}
-              className={`block w-full ${revoked ? "opacity-40 grayscale" : ""}`}
-            />
-          </div>
+          <CertificateArtwork
+            src={image}
+            alt={`Certificate issued to ${certificate.recipientName}`}
+            revoked={revoked}
+          />
         )}
 
         <div className="mt-7 flex flex-wrap items-center gap-5 border-t border-rule pt-6">
